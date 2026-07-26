@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 import os
+from google import genai
+
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
 
 app = FastAPI()
 
@@ -48,7 +52,30 @@ async def webhook(request: Request):
             sender = msg["from"]
             text = msg["text"]["body"]
 
-            reply = f"Hello! You said: {text}"
+            try:
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=f"""
+You are PCS AI WhatsApp Assistant.
+
+Rules:
+- Detect the user's language automatically.
+- Reply in the same language as the user.
+- If the user mixes multiple languages, reply naturally in the same style.
+- Keep answers clear, accurate and professional.
+- Be polite and helpful.
+- Keep replies under 120 words unless the user asks for a detailed explanation.
+
+User Message:
+{text}
+"""
+    )
+
+    reply = response.text
+
+except Exception as e:
+    print("Gemini Error:", e)
+    reply = "Sorry, I'm temporarily unavailable. Please try again in a moment."
 
             url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
 
