@@ -1,14 +1,16 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 import os
+import requests
 from google import genai
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-
 app = FastAPI()
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "pcs_verify_token_2026")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 
 @app.get("/")
@@ -22,19 +24,10 @@ async def verify(request: Request):
     token = request.query_params.get("hub.verify_token")
     challenge = request.query_params.get("hub.challenge")
 
-    print("MODE:", mode)
-    print("TOKEN:", token)
-    print("VERIFY_TOKEN:", VERIFY_TOKEN)
-
     if mode == "subscribe" and token == VERIFY_TOKEN:
         return PlainTextResponse(challenge)
 
     return PlainTextResponse("Verification failed", status_code=403)
-
-import requests
-
-WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 
 @app.post("/webhook")
@@ -52,10 +45,11 @@ async def webhook(request: Request):
             sender = msg["from"]
             text = msg["text"]["body"]
 
+            # ===== Gemini AI =====
             try:
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=f"""
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=f"""
 You are PCS AI WhatsApp Assistant.
 
 Rules:
@@ -69,14 +63,15 @@ Rules:
 User Message:
 {text}
 """
-    )
+                )
 
-    reply = response.text
+                reply = response.text
 
-except Exception as e:
-    print("Gemini Error:", e)
-    reply = "Sorry, I'm temporarily unavailable. Please try again in a moment."
+            except Exception as e:
+                print("Gemini Error:", e)
+                reply = "Sorry, I'm temporarily unavailable. Please try again in a moment."
 
+            # ===== Send WhatsApp Reply =====
             url = f"https://graph.facebook.com/v25.0/{PHONE_NUMBER_ID}/messages"
 
             headers = {
@@ -97,6 +92,6 @@ except Exception as e:
             print(r.status_code, r.text)
 
     except Exception as e:
-        print(e)
+        print("Webhook Error:", e)
 
     return {"status": "received"}
